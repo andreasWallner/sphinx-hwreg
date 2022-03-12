@@ -22,18 +22,24 @@ import re
 logger = logging.getLogger(__name__)
 
 
-class ManualRegister(ObjectDescription):
+class ManualRegisterDirective(ObjectDescription):
+  """ Directive to manually add a register
+
+  Expected is a headline of the format 'Name (id, hex-offset)'.
+  Any content can be placed in the directive.
+  """
   has_content = True
   required_arguments = 1
 
-  def handle_signature(self, sig, signode):
-    signode += addnodes.desc_name(text=sig)
-    return sig
+  def handle_signature(self, headline, signode):
+    signode += addnodes.desc_name(text=headline)
+    return headline
   
-  def add_target_and_index(self, name_cls, sig, signode):
-    name = sig.split('(')[1].split(',')[0]
-    registers = self.env.get_domain('hwreg')
-    signode['ids'].append(registers.add_register(name, sig))
+  def add_target_and_index(self, name_cls, headline, signode):
+    reg_id = headline.split('(')[1].split(',')[0]
+    hwreg = self.env.get_domain('hwreg')
+    signode['ids'].append(hwreg.add_register(reg_id, headline))
+
 
 class ManualBitfieldRole(SphinxRole):
   name: str
@@ -54,10 +60,11 @@ class ManualBitfieldRole(SphinxRole):
   
   def run(self) -> Tuple[List[Node], List[system_message]]:
     print(self.name, self.rawtext, self.text, self.content, self.options)
-    registers = self.env.get_domain('hwreg')
-    targetid = registers.add_bitfield(self.bitfield_name, self.register_name)
+    hwreg = self.env.get_domain('hwreg')
+    targetid = hwreg.add_bitfield(self.bitfield_name, self.register_name)
     targetnode = nodes.target('', self.bitfield_name, ids=[targetid])
     return [[targetnode], []]
+
 
 class HardwareRegisterDomain(Domain):
   name = 'hwreg'
@@ -68,7 +75,7 @@ class HardwareRegisterDomain(Domain):
     'define-bf': ManualBitfieldRole(),
   }
   directives = {
-    'define-reg': ManualRegister,
+    'define-reg': ManualRegisterDirective,
   }
   initial_data = {
     'registers': [],
@@ -77,16 +84,23 @@ class HardwareRegisterDomain(Domain):
 
   def get_full_qualified_name(self, node):
     return '{}.{}'.format('recipe', node.arguments[0])
-  
+
   def get_objects(self):
     yield from self.data['registers']
+    yield from self.data['bitfields']
+  
+  def get_type_name(self, type, primary):
+    if type == 'registers':
+      return 'Register'
+    elif type == 'bitfields':
+      return 'Bitfield'
 
   def resolve_xref(self, env, fromdocname, builder, typ, target, node, contnode):
-    print(fromdocname, builder, typ, target, node, contnode)
     if typ == 'register':
-      match = [(docname, anchor) for name, sig, typ, docname, anchor, prio in self.data[typ + 's'] if name == target]
+      match = [(docname, anchor) for reg_id, dispname, type, docname, anchor, prio in self.data['registers'] if reg_id == target]
     else: # typ == 'bitfield'
-      match = [(docname, anchor) for name, anchor, docname in self.data['bitfields'] if name == target]
+      match = [(docname, anchor) for bitfield_id, dispname, type, docname, anchor, prio in self.data['bitfields'] if bitfield_id == target]
+
     if len(match) > 0:
       (todocname, targ) = match[0]
       return make_refnode(builder, fromdocname, todocname, targ, contnode, targ)
@@ -94,15 +108,16 @@ class HardwareRegisterDomain(Domain):
       logger.warn(f'could not resolve xref to register "{target}" in {fromdocname}')
       return None
 
-  def add_register(self, name, signature):
-    anchor = 'hwreg-register-{}'.format(name.replace('::', '-'))
+  def add_register(self, reg_id, headline):
+    anchor = 'hwreg-register-{}'.format(reg_id.replace('::', '-'))
 
-    self.data['registers'].append((name, signature, 'register', self.env.docname, anchor, 0))
+    self.data['registers'].append((reg_id, headline, 'register', self.env.docname, anchor, 1))
     return anchor
   
-  def add_bitfield(self, bitfield, register):
-    anchor = 'hwreg-bitfield-{}-{}'.format(register.replace('::', '-'), bitfield)
-    self.data['bitfields'].append((f'{register}::{bitfield}', anchor, self.env.docname))
+  def add_bitfield(self, bitfield, reg_id):
+    anchor = 'hwreg-bitfield-{}-{}'.format(reg_id.replace('::', '-'), bitfield)
+
+    self.data['bitfields'].append((f'{reg_id}::{bitfield}', bitfield, 'bitfield', self.env.docname, anchor, 1))
     return anchor
   
 
