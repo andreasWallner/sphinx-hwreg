@@ -11,11 +11,14 @@ from sphinx.roles import XRefRole
 from sphinx.util.nodes import make_refnode
 from sphinx.util.docutils import SphinxRole
 from sphinx.util import logging
+from sphinx.errors import ExtensionError
 from docutils.parsers.rst.states import Inliner
-from typing import (IO, TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Set,
-                    Tuple, Type, cast)
+from typing import Dict, List, Tuple
 from docutils.nodes import Element, Node, system_message
 from docutils.utils import Reporter, unescape
+from sphinx_hwreg._yaml_model import *
+from sphinx_hwreg._renderer import *
+import os
 
 import re
 
@@ -37,8 +40,9 @@ class ManualRegisterDirective(ObjectDescription):
   
   def add_target_and_index(self, name_cls, headline, signode):
     reg_id = headline.split('(')[1].split(',')[0]
+    s = reg_id.split('::')
     hwreg = self.env.get_domain('hwreg')
-    signode['ids'].append(hwreg.add_register(reg_id, headline))
+    signode['ids'].append(hwreg.add_register(s[0], s[1]))
 
 
 class ManualBitfieldRole(SphinxRole):
@@ -61,9 +65,60 @@ class ManualBitfieldRole(SphinxRole):
   def run(self) -> Tuple[List[Node], List[system_message]]:
     print(self.name, self.rawtext, self.text, self.content, self.options)
     hwreg = self.env.get_domain('hwreg')
-    targetid = hwreg.add_bitfield(self.bitfield_name, self.register_name)
+    s = self.register_name.split('::')
+    targetid = hwreg.add_bitfield(s[0], s[1], self.bitfield_name)
     targetnode = nodes.target('', self.bitfield_name, ids=[targetid])
-    return [[targetnode], []]
+    return ([targetnode], [])
+
+
+class AutoRegisterDirective(ObjectDescription):
+  """ 
+  Add register documentation to documentation,
+  the content of the directive is placed as a description.
+  """
+  has_content = True
+  option_spec = {
+    'filename': lambda x: x,
+  }
+
+  _yaml = None
+
+  def handle_signature(self, sig, signode):
+    (self._moduleName, self._registerName) = sig.split('::')
+    signode += addnodes.desc_name(text=f'{self._moduleName}::{self._registerName}')
+    # TODO error handling
+    print(self._moduleName, self._registerName)
+
+  def transform_content(self, contentnode) -> None:
+    hwreg = self.env.get_domain('hwreg')
+    register = hwreg.get_register(self._moduleName, self._registerName, self.options.get('filename', None))
+    contentnode.insert(0, render_field_graphic(register))
+    contentnode.append(render_field_table(register))
+
+
+class AutoModuleDirective(ObjectDescription):
+  """
+  Add all registers of a module to the documentation.
+  """
+  has_content = False
+  option_spec = {
+    'filename': lambda x: x,
+  }
+
+  def handle_signature(self, sig, signode):
+    pass
+
+  # TODO generate multiple desc nodes
+  def transform_content(self, contentnode) -> None:
+    sig = self.get_signatures()[0]
+    hwreg = self.env.get_domain('hwreg')
+    component = hwreg.get_component(sig, self.options.get('filename', None))
+    print(contentnode)
+    for reg in component.elements:
+      contentnode.append(addnodes.desc_name(text=f'{sig}::{reg.name}'))
+      contentnode.append(render_module_table(component))
+      contentnode.append(render_field_graphic(reg))
+      contentnode.append(render_field_table(reg))
 
 
 class HardwareRegisterDomain(Domain):
@@ -76,11 +131,15 @@ class HardwareRegisterDomain(Domain):
   }
   directives = {
     'define-reg': ManualRegisterDirective,
+    'autoreg': AutoRegisterDirective,
+    'automodule': AutoModuleDirective,
   }
   initial_data = {
     'registers': [],
     'bitfields': [],
   }
+
+  yaml_cache = {}
 
   def get_full_qualified_name(self, node):
     return '{}.{}'.format('recipe', node.arguments[0])
@@ -108,17 +167,39 @@ class HardwareRegisterDomain(Domain):
       logger.warn(f'could not resolve xref to register "{target}" in {fromdocname}')
       return None
 
-  def add_register(self, reg_id, headline):
-    anchor = 'hwreg-register-{}'.format(reg_id.replace('::', '-'))
-
-    self.data['registers'].append((reg_id, headline, 'register', self.env.docname, anchor, 1))
+  def add_register(self, module, register):
+    reg_id = f'{module}::{register}'
+    anchor = f'hwreg-register-{module}-{register}'
+    self.data['registers'].append((reg_id, reg_id, 'register', self.env.docname, anchor, 1))
     return anchor
   
-  def add_bitfield(self, bitfield, reg_id):
-    anchor = 'hwreg-bitfield-{}-{}'.format(reg_id.replace('::', '-'), bitfield)
-
-    self.data['bitfields'].append((f'{reg_id}::{bitfield}', bitfield, 'bitfield', self.env.docname, anchor, 1))
+  def add_bitfield(self, module, register, bitfield):
+    bf_id = f'{module}::{register}::{bitfield}'
+    anchor = f'hwreg-bitfield-{module}-{register}-{bitfield}'
+    self.data['bitfields'].append((bf_id, bitfield, 'bitfield', self.env.docname, anchor, 1))
     return anchor
+  
+  def get_register(self, moduleName, registerName, filename=None) -> Register:
+    component = self.get_component(moduleName, filename)
+    register = next((r for r in component.elements if r.name == registerName), None)
+    if register is None:
+      raise ExtensionError(f'Could not find register {moduleName}::{registerName}', modname='hwreg')
+    return register
+  
+  def get_component(self, moduleName, filename=None) -> BusComponent:
+    if filename is not None and filename not in self.yaml_cache:
+      filename = os.path.abspath(filename)
+      with open(filename) as f:
+        self.yaml_cache[filename] = yaml.load(f, Loader=yaml.UnsafeLoader)
+    elif filename is None:
+      pass
+  
+    valid_files = self.yaml_cache.items() if filename is None else [self.yaml_cache[filename]]
+    busComponent = next((bc for bc in valid_files if bc.busComponentName == moduleName), None)
+
+    if busComponent is None:
+      raise ExtensionError(f'Could not find component {moduleName}', modname='hwreg')
+    return busComponent
   
 
 def setup(app):
