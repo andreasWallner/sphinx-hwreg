@@ -1,3 +1,4 @@
+from gc import callbacks
 from docutils import nodes
 from sphinx import addnodes
 from sphinx_hwreg._yaml_model import *
@@ -19,7 +20,7 @@ def entry(text, morecols=0, morerows=0):
       entry += nodes.paragraph(text=text)
   return entry
 
-def render_register_list(component: BusComponent) -> List[Node]:
+def render_register_list(component: BusComponent, xref_fun: Optional[Callable[[nodes.Node, str, str],Node]]=None) -> List[Node]:
   table = nodes.table()
   table['classes'].append('register-list')
   tgroup = nodes.tgroup(cols=3)
@@ -39,7 +40,15 @@ def render_register_list(component: BusComponent) -> List[Node]:
 
   for register in component.elements:
     row = nodes.row()
-    row += entry(register.name)
+    if xref_fun is not None:
+      p = nodes.paragraph()
+      ref = xref_fun(None, component.busComponentName, register.name)
+      p += ref
+      l = nodes.literal(text=f'{component.busComponentName}::{register.name}')
+      p += l 
+      row += entry(p)
+    else:
+      row += entry(register.name)
     row += entry(f'0x{register.address:08x}')
     row += entry(f'0x{register.resetValue():08x}')
     tbody += row

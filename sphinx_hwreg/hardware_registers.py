@@ -25,6 +25,20 @@ import re
 logger = logging.getLogger(__name__)
 
 
+#def _parse(self, line):
+#        """
+#        Parses a single line/string for inline rst statements, like strong, emphasis, literal, ...
+#
+#        :param line: string to parse
+#        :return: nodes
+#        """
+#        inline_parser = Inliner()
+#        inline_parser.init_customizations(self.doc_settings)
+#        result, message = inline_parser.parse(line, 0, self.doc_memo, self.dummy_doc)
+#        if message:
+#            raise SphinxNeedLayoutException(message)
+#        return result 
+
 class ManualRegisterDirective(ObjectDescription):
   """ Directive to manually add a register
 
@@ -54,7 +68,6 @@ class ManualBitfieldRole(SphinxRole):
                inliner: Inliner, options: Dict = {}, content: List[str] = None
                ) -> Tuple[List[Node], List[system_message]]:
     matched = self.ref_re.match(unescape(text))
-    print(unescape(text), matched.group(1), matched.group(2))
     if matched:
       self.bitfield_name = unescape(matched.group(1))
       self.register_name = unescape(matched.group(2))
@@ -63,7 +76,6 @@ class ManualBitfieldRole(SphinxRole):
     return super().__call__(name, rawtext, text, lineno, inliner, options, content)
   
   def run(self) -> Tuple[List[Node], List[system_message]]:
-    print(self.name, self.rawtext, self.text, self.content, self.options)
     hwreg = self.env.get_domain('hwreg')
     s = self.register_name.split('::')
     targetid = hwreg.add_bitfield(s[0], s[1], self.bitfield_name)
@@ -87,13 +99,43 @@ class AutoRegisterDirective(ObjectDescription):
     (self._moduleName, self._registerName) = sig.split('::')
     signode += addnodes.desc_name(text=f'{self._moduleName}::{self._registerName}')
     # TODO error handling
-    print(self._moduleName, self._registerName)
 
   def transform_content(self, contentnode) -> None:
     hwreg = self.env.get_domain('hwreg')
     register = hwreg.get_register(self._moduleName, self._registerName, self.options.get('filename', None))
-    contentnode.insert(0, render_field_graphic(register))
+    if register.doc is not None:
+      contentnode.append(nodes.paragraph(text=register.doc)) # TODO parse
+    contentnode.append(render_field_graphic(register))
     contentnode.append(render_field_table(register))
+
+
+class AutoModuleSummary(ObjectDescription):
+  """
+  Generates a list of all registers in a component.
+
+  With type 'full' a list will all fields is generated,
+  while 'list' (default) generates only an overview with
+  name, reset value and offset.
+  """
+  has_content = False
+  option_spec = {
+    'filename': lambda x: x,
+    'type': lambda x: x
+  }
+
+  def handle_signature(self, sig, signode):
+    signode += addnodes.desc_name(text=f'{sig}')
+  
+  def transform_content(self, contentnode) -> None:
+    hwreg = self.env.get_domain('hwreg') #type: HardwareRegisterDomain
+    type = self.options.get('type', 'list')
+    component = hwreg.get_component(self.get_signatures()[0], self.options.get('filename', None))
+    if type == 'full':
+      contentnode += render_module_table(component)
+    elif type == 'list':
+      contentnode += render_register_list(component)
+    else:
+      raise Exception('alles am arsch') # TODO
 
 
 class AutoModuleDirective(ObjectDescription):
@@ -113,10 +155,8 @@ class AutoModuleDirective(ObjectDescription):
     sig = self.get_signatures()[0]
     hwreg = self.env.get_domain('hwreg')
     component = hwreg.get_component(sig, self.options.get('filename', None))
-    print(contentnode)
     for reg in component.elements:
       contentnode.append(addnodes.desc_name(text=f'{sig}::{reg.name}'))
-      contentnode.append(render_module_table(component))
       contentnode.append(render_field_graphic(reg))
       contentnode.append(render_field_table(reg))
 
@@ -133,6 +173,7 @@ class HardwareRegisterDomain(Domain):
     'define-reg': ManualRegisterDirective,
     'autoreg': AutoRegisterDirective,
     'automodule': AutoModuleDirective,
+    'automodulesummary': AutoModuleSummary,
   }
   initial_data = {
     'registers': [],
@@ -188,13 +229,13 @@ class HardwareRegisterDomain(Domain):
   
   def get_component(self, moduleName, filename=None) -> BusComponent:
     if filename is not None and filename not in self.yaml_cache:
-      filename = os.path.abspath(filename)
+      filename = os.path.abspath(filename) #TODO abspath relative to rst file being processed
       with open(filename) as f:
         self.yaml_cache[filename] = yaml.load(f, Loader=yaml.UnsafeLoader)
     elif filename is None:
       pass
   
-    valid_files = self.yaml_cache.items() if filename is None else [self.yaml_cache[filename]]
+    valid_files = self.yaml_cache.values() if filename is None else [self.yaml_cache[filename]]
     busComponent = next((bc for bc in valid_files if bc.busComponentName == moduleName), None)
 
     if busComponent is None:
