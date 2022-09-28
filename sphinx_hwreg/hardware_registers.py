@@ -58,6 +58,18 @@ class ManualRegisterDirective(ObjectDescription):
     hwreg = self.env.get_domain('hwreg')
     signode['ids'].append(hwreg.add_register(s[0], s[1]))
 
+  def transform_content(self, contentnode) -> None:
+    contentnode.append(nodes.Text('this is some text coming from the code!'))
+    xref = addnodes.pending_xref('', refdomain='hwreg', reftype='register', reftarget='radio::status', refexplicit=False)
+    lit = nodes.literal()
+    lit['classes'].append('xref')
+    lit['classes'].append('hwreg')
+    lit['classes'].append('hwreg-register')
+    lit += nodes.Text('the problem case')
+    xref.append(lit)
+    p = nodes.paragraph()
+    p += xref
+    contentnode.append(p)
 
 class ManualBitfieldRole(SphinxRole):
   name: str
@@ -133,7 +145,7 @@ class AutoModuleSummary(ObjectDescription):
     if type == 'full':
       contentnode += render_module_table(component)
     elif type == 'list':
-      contentnode += render_register_list(component)
+      contentnode += render_register_list(component, lambda n, c, r: addnodes.pending_xref('', refdomain='hwreg', reftype='register', reftarget=f'{c}::{r}', refexplicit=False))
     else:
       raise Exception('alles am arsch') # TODO
 
@@ -196,6 +208,7 @@ class HardwareRegisterDomain(Domain):
       return 'Bitfield'
 
   def resolve_xref(self, env, fromdocname, builder, typ, target, node, contnode):
+    print(f'resolving {fromdocname} {typ} {target} {node} {contnode}')
     if typ == 'register':
       match = [(docname, anchor) for reg_id, dispname, type, docname, anchor, prio in self.data['registers'] if reg_id == target]
     else: # typ == 'bitfield'
@@ -203,7 +216,9 @@ class HardwareRegisterDomain(Domain):
 
     if len(match) > 0:
       (todocname, targ) = match[0]
-      return make_refnode(builder, fromdocname, todocname, targ, contnode, targ)
+      ref = make_refnode(builder, fromdocname, todocname, targ, contnode, targ)
+      print('!!!', ref)
+      return ref
     else:
       logger.warn(f'could not resolve xref to register "{target}" in {fromdocname}')
       return None
