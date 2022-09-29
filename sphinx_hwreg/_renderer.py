@@ -76,11 +76,11 @@ def render_field_graphic(register: Register) -> List[Node]:
   for field in sorted(filter(lambda f: f.section.max > 15, register.fields), key=lambda f: -f.section.max):
     clipped_min = max(field.section.min, 16)
     if last > field.section.max:
-      upper_row += entry(None, morecols=last-field.section.max-1)
+      upper_row += entry('', morecols=last-field.section.max-1)
     upper_row += entry(nodes.abbreviation(rawsource=field.name, text=field.name), morecols=field.section.max-clipped_min)
     last=clipped_min-1
   if last > 16:
-    upper_row += entry(None, morecols=last-16)
+    upper_row += entry('', morecols=last-16)
   tbody += upper_row
 
   lower_row = nodes.row()
@@ -88,13 +88,13 @@ def render_field_graphic(register: Register) -> List[Node]:
   for field in sorted(filter(lambda f: f.section.min < 16, register.fields), key=lambda f: -f.section.max):
     clipped_max = min(field.section.max, 15)
     if last > clipped_max:
-      lower_row += entry(None, morecols=last-clipped_max-1)
+      lower_row += entry('x', morecols=last-clipped_max-1)
     p = nodes.paragraph()
     p += nodes.abbreviation(text=field.name, explanation=field.name)
     lower_row += entry(p, morecols=clipped_max-field.section.min)
     last = field.section.min-1
   if last > 0:
-    lower_row += entry(None, morecols=last-1)
+    lower_row += entry('', morecols=last-1)
   tbody += lower_row
   
   foot = nodes.row()
