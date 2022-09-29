@@ -103,18 +103,24 @@ class AutoRegisterDirective(ObjectDescription):
   has_content = True
   option_spec = {
     'filename': lambda x: x,
+    'noanchor': lambda _: True
   }
 
   _yaml = None
 
   def handle_signature(self, sig, signode):
-    (self._moduleName, self._registerName) = sig.split('::')
-    signode += addnodes.desc_name(text=f'{self._moduleName}::{self._registerName}')
+    (self._component, self._register) = sig.split('::')
+    signode += addnodes.desc_name(text=f'{self._component}::{self._register}')
     # TODO error handling
+  
+  def add_target_and_index(self, name_cls, headline, signode):
+    hwreg = self.env.get_domain('hwreg')
+    if not self.options.get('noanchor', False):
+      signode['ids'].append(hwreg.add_register(self._component, self._register))
 
   def transform_content(self, contentnode) -> None:
     hwreg = self.env.get_domain('hwreg')
-    register = hwreg.get_register(self._moduleName, self._registerName, self.options.get('filename', None))
+    register = hwreg.get_register(self._component, self._register, self.options.get('filename', None))
     if register.doc is not None:
       contentnode.append(nodes.paragraph(text=register.doc)) # TODO parse
     contentnode.append(render_field_graphic(register))
@@ -132,7 +138,6 @@ class AutoModuleSummary(ObjectDescription):
   has_content = False
   option_spec = {
     'filename': lambda x: x,
-    'type': lambda x: x
   }
 
   def handle_signature(self, sig, signode):
@@ -140,14 +145,8 @@ class AutoModuleSummary(ObjectDescription):
   
   def transform_content(self, contentnode) -> None:
     hwreg = self.env.get_domain('hwreg') #type: HardwareRegisterDomain
-    type = self.options.get('type', 'list')
     component = hwreg.get_component(self.get_signatures()[0], self.options.get('filename', None))
-    if type == 'full':
-      contentnode += render_module_table(component)
-    elif type == 'list':
-      contentnode += render_register_list(component, lambda n, c, r: addnodes.pending_xref('', refdomain='hwreg', reftype='register', reftarget=f'{c}::{r}', refexplicit=False))
-    else:
-      raise Exception('alles am arsch') # TODO
+    contentnode += render_register_list(component, hwreg.make_register_xref)
 
 
 class AutoModuleDirective(ObjectDescription):
@@ -157,6 +156,8 @@ class AutoModuleDirective(ObjectDescription):
   has_content = False
   option_spec = {
     'filename': lambda x: x,
+    'type': lambda x: x, # TODO check?
+    'noanchor': lambda _: True,
   }
 
   def handle_signature(self, sig, signode):
@@ -165,12 +166,24 @@ class AutoModuleDirective(ObjectDescription):
   # TODO generate multiple desc nodes
   def transform_content(self, contentnode) -> None:
     sig = self.get_signatures()[0]
-    hwreg = self.env.get_domain('hwreg')
+    hwreg = self.env.get_domain('hwreg') #type: HardwareRegisterDomain
+    noanchor = self.options.get('noanchor', False)
     component = hwreg.get_component(sig, self.options.get('filename', None))
-    for reg in component.elements:
-      contentnode.append(addnodes.desc_name(text=f'{sig}::{reg.name}'))
-      contentnode.append(render_field_graphic(reg))
-      contentnode.append(render_field_table(reg))
+    type = self.options.get('type', 'fancy')
+    if type == 'short':
+      contentnode += render_module_table(component, None, hwreg.add_register if not noanchor else None)
+
+    elif type == 'fancy':
+      for reg in component.elements:
+        headline = addnodes.desc_name(text=f'{sig}::{reg.name}')
+        if not self.options.get('noanchor', False):
+          headline['ids'].append(hwreg.add_register(component.busComponentName, reg.name))
+        contentnode.append(headline)
+        contentnode.append(render_field_graphic(reg))
+        contentnode.append(render_field_table(reg))
+
+    else:
+      raise Exception(f'Invalid AutoModule type {type}')
 
 
 class HardwareRegisterDomain(Domain):
@@ -208,7 +221,6 @@ class HardwareRegisterDomain(Domain):
       return 'Bitfield'
 
   def resolve_xref(self, env, fromdocname, builder, typ, target, node, contnode):
-    print(f'resolving {fromdocname} {typ} {target} {node} {contnode}')
     if typ == 'register':
       match = [(docname, anchor) for reg_id, dispname, type, docname, anchor, prio in self.data['registers'] if reg_id == target]
     else: # typ == 'bitfield'
@@ -216,11 +228,9 @@ class HardwareRegisterDomain(Domain):
 
     if len(match) > 0:
       (todocname, targ) = match[0]
-      ref = make_refnode(builder, fromdocname, todocname, targ, contnode, targ)
-      print('!!!', ref)
-      return ref
+      return make_refnode(builder, fromdocname, todocname, targ, contnode, targ)
     else:
-      logger.warn(f'could not resolve xref to register "{target}" in {fromdocname}')
+      logger.warn(f'could not resolve xref {target} in {fromdocname}')
       return None
 
   def add_register(self, module, register):
@@ -257,6 +267,44 @@ class HardwareRegisterDomain(Domain):
       raise ExtensionError(f'Could not find component {moduleName}', modname='hwreg')
     return busComponent
   
+  def make_register_xref(self, node: Node, component: str, register: str) -> Node:
+    target = f'{component}::{register}'
+    para = nodes.paragraph()
+    xref = addnodes.pending_xref('', refdomain='hwreg', reftype='register', reftarget=target, refexplicit=False)
+    if node is None:
+      lit = nodes.literal()
+      lit['classes'].append('xref')
+      lit['classes'].append('hwreg')
+      lit['classes'].append('hwreg-register')
+      text = nodes.Text(target)
+
+      lit += text
+      xref += lit
+    else:
+      xref += node
+
+    para += xref
+    return xref
+  
+  def make_bitfield_xref(self, node: Node, component: str, register: str, field: str) -> Node:
+    target = f'{component}::{register}::{field}'
+    p = nodes.paragraph()
+    xref = addnodes.panding_xref('', refomain='hwreg', reftype='field', reftarget=target, refexplicit=False)
+    if node is None:
+      lit = nodes.literal()
+      lit['classes'].append('xref')
+      lit['classes'].append('hwreg')
+      lit['classes'].append('hwreg-field')
+      text = nodes.Text(target)
+  
+      lit += text
+      xref += lit
+    else:
+      xref += node
+
+    p += xref
+    return xref
+
 
 def setup(app):
   app.add_domain(HardwareRegisterDomain)

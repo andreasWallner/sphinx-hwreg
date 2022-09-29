@@ -143,7 +143,9 @@ def render_field_table(register) -> List[Node]:
   return table
 
 
-def render_module_table(component: BusComponent) -> List[Node]:
+def render_module_table(component: BusComponent, xref_fun: Optional[Callable[[nodes.Node, str, str],Node]]=None, add_reg=None) -> List[Node]:
+  assert xref_fun is None or add_reg is None, "can't add register and link to them at the same time"
+
   table = nodes.table()
   table['classes'].append('register-module-table')
   tgroup = nodes.tgroup(cols=9)
@@ -168,7 +170,19 @@ def render_module_table(component: BusComponent) -> List[Node]:
       row = nodes.row()
       if first:
         row += entry(f'0x{reg.address:04x}', morerows=field_cnt-1)
-        row += entry(reg.name, morerows=field_cnt-1)
+        if xref_fun is not None:
+          lit = nodes.literal()
+          lit['classes'].append('xref')
+          lit['classes'].append('hwreg')
+          lit['classes'].append('hwreg-register')
+          lit += nodes.Text(reg.name)
+          name_thing = xref_fun(lit, component.busComponentName, reg.name)
+        elif add_reg is not None:
+          name_thing = nodes.paragraph(text=reg.name)
+          name_thing['ids'].append(add_reg(component.busComponentName, reg.name))
+        else:
+          name_thing = reg.name
+        row += entry(name_thing, morerows=field_cnt-1)
         row += entry(reg.doc, morerows=field_cnt-1)
         row += entry(component.dataWidth, morerows=field_cnt-1)
         first = False
