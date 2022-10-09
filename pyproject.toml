@@ -6,7 +6,7 @@ build-backend="setuptools.build_meta"
 name="sphinx-hwreg"
 description="Sphinx extension to visualize hardware registers"
 readme="README.md"
-requires-python=">=3.9"
+requires-python=">=3.8"
 license={text="MIT"}
 dependencies=[
   "sphinx>=5",
