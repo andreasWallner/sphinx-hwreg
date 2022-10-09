@@ -1,0 +1,30 @@
+table.register-field-graphic {
+  table-layout: fixed;
+  width: 100%;
+}
+
+table.register-field-graphic td {
+  text-align: center;
+  border: 1px solid #aaa;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+table.register-field-graphic abbr {
+  border-bottom: none;
+  text-decoration: none;
+}
+
+table.register-field-graphic tr:first-child, table.register-field-graphic tr:last-child {
+  font-size: 0.7em;
+}
+
+table.register-field-graphic tr:first-child td, table.register-field-graphic tr:last-child td {
+  border: none;
+  width: 6%;
+}
+
+table.register-field-graphic td p:empty::after {
+  content: "\00a0";
+}
