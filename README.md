@@ -21,7 +21,7 @@ Add to your sphinx build by extending you `conf.py` with:
     ]
 
 To get nice visuals for the register field tables, a custom CSS needs to be added. For an example have a
-look at `extras/register-graphic.css`. Copy this to your static html folder and add via:
+look at `example/register-graphic.css`. Copy this to your static html folder and add via:
 
     html_static_path = ['_static']
     html_css_files = [
