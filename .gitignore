@@ -1,1 +1,6 @@
 __pycache__
+_version.py
+*.egg-info/
+
+.vscode
+.vs
