@@ -44,6 +44,7 @@ Options:
 - `type` style to use, either `fancy` or `short`
 - `noanchor` if present no anchors are generated - use this if the automodule is used
    as a second listing (e.g. in a register overview) so that links can go to a fuller description.
+- `nowarn` do not generate a warning for e.g. a register w/o and fields
 
 Example:
 
@@ -51,6 +52,7 @@ Example:
        :filename: _generated/pwm.yaml
        :type: short
        :noanchor:
+       :nowarn:
 
 ### hwreg:automodulesummary
 

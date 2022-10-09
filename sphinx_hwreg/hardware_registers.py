@@ -158,6 +158,7 @@ class AutoModuleDirective(ObjectDescription):
     'filename': lambda x: x,
     'type': lambda x: x, # TODO check?
     'noanchor': lambda _: True,
+    'nowarn': lambda _: True,
   }
 
   def handle_signature(self, sig, signode):
@@ -168,6 +169,7 @@ class AutoModuleDirective(ObjectDescription):
     sig = self.get_signatures()[0]
     hwreg = self.env.get_domain('hwreg') #type: HardwareRegisterDomain
     noanchor = self.options.get('noanchor', False)
+    nowarn = self.options.get('nowarn', False)
     component = hwreg.get_component(sig, self.options.get('filename', None))
     type = self.options.get('type', 'fancy')
     if type == 'short':
@@ -182,7 +184,7 @@ class AutoModuleDirective(ObjectDescription):
         if reg.fields is not None:
           contentnode.append(render_field_graphic(reg))
           contentnode.append(render_field_table(reg))
-        else:
+        elif not nowarn:
           logger.warning(f'hwreg::automodule {sig}.{reg.name} does not have any fields in it')
 
     else:
