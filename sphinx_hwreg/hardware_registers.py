@@ -179,8 +179,11 @@ class AutoModuleDirective(ObjectDescription):
         if not self.options.get('noanchor', False):
           headline['ids'].append(hwreg.add_register(component.busComponentName, reg.name))
         contentnode.append(headline)
-        contentnode.append(render_field_graphic(reg))
-        contentnode.append(render_field_table(reg))
+        if reg.fields is not None:
+          contentnode.append(render_field_graphic(reg))
+          contentnode.append(render_field_table(reg))
+        else:
+          logger.warning(f'hwreg::automodule {sig}.{reg.name} does not have any fields in it')
 
     else:
       raise Exception(f'Invalid AutoModule type {type}')
