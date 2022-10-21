@@ -101,7 +101,7 @@ def render_field_graphic(register: Register) -> List[Node]:
 
   return table
 
-def render_field_table(register) -> List[Node]:
+def render_field_table(register, add_field) -> List[Node]:
   table = nodes.table()
   table['classes'].append('register-field-table')
   tgroup = nodes.tgroup(cols=6)
@@ -124,7 +124,12 @@ def render_field_table(register) -> List[Node]:
   for field in register.fields:
     value_cnt = len(field.values or [])
     row = nodes.row()
-    row += entry(field.name, morerows=value_cnt)
+    if add_field is not None:
+        name_thing = nodes.paragraph(text=field.name)
+        name_thing['ids'].append(add_field(field.name))
+    else:
+        name_thing = field.name
+    row += entry(name_thing, morerows=value_cnt)
     row += entry(field.bits(), morerows=value_cnt)
     row += entry(field.accessType, morerows=value_cnt)
     row += entry(field.doc, morecols=2)

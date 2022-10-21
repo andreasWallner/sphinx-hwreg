@@ -183,7 +183,7 @@ class AutoModuleDirective(ObjectDescription):
         contentnode.append(headline)
         if reg.fields is not None:
           contentnode.append(render_field_graphic(reg))
-          contentnode.append(render_field_table(reg))
+          contentnode.append(render_field_table(reg, lambda f: hwreg.add_bitfield(component.busComponentName, reg.name, f) if not noanchor else None))
         elif not nowarn:
           logger.warning(f'hwreg::automodule {sig}.{reg.name} does not have any fields in it')
 
@@ -294,7 +294,7 @@ class HardwareRegisterDomain(Domain):
   def make_bitfield_xref(self, node: Node, component: str, register: str, field: str) -> Node:
     target = f'{component}::{register}::{field}'
     p = nodes.paragraph()
-    xref = addnodes.panding_xref('', refomain='hwreg', reftype='field', reftarget=target, refexplicit=False)
+    xref = addnodes.pending_xref('', refdomain='hwreg', reftype='field', reftarget=target, refexplicit=False)
     if node is None:
       lit = nodes.literal()
       lit['classes'].append('xref')
