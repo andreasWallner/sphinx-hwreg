@@ -42,10 +42,7 @@ def render_register_list(component: BusComponent, xref_fun: Optional[Callable[[n
     row = nodes.row()
     if xref_fun is not None:
       p = nodes.paragraph()
-      ref = xref_fun(None, component.busComponentName, register.name)
-      p += ref
-      l = nodes.literal(text=f'{component.busComponentName}::{register.name}')
-      p += l 
+      p += xref_fun(None, component.busComponentName, register.name)
       row += entry(p)
     else:
       row += entry(register.name)
